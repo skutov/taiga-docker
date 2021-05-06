@@ -9,8 +9,8 @@ x-environment:
   POSTGRES_HOST: taiga-db
   # Taiga settings
   TAIGA_SECRET_KEY: "taiga-back-secret-key"
-  TAIGA_SITES_DOMAIN: "localhost:9000"
-  TAIGA_SITES_SCHEME: "http"
+  TAIGA_SITES_DOMAIN: "taiga.home.gosset.uk"
+  TAIGA_SITES_SCHEME: "https"
   # Email settings. Uncomment following lines and configure your SMTP server
   # EMAIL_BACKEND: "django.core.mail.backends.smtp.EmailBackend"
   # DEFAULT_FROM_EMAIL: "no-reply@example.com"
@@ -84,8 +84,8 @@ services:
   taiga-front:
     image: taigaio/taiga-front:latest
     environment:
-      TAIGA_URL: "http://localhost:9000"
-      TAIGA_WEBSOCKETS_URL: "ws://localhost:9000"
+      TAIGA_URL: "https://taiga.home.gosset.uk"
+      TAIGA_WEBSOCKETS_URL: "wss://taiga.home.gosset.uk"
     networks:
       - taiga
     # volumes:
@@ -124,18 +124,39 @@ services:
 
   taiga-gateway:
     image: nginx:1.19-alpine
-    ports:
-      - "9000:80"
     volumes:
       - ./taiga-gateway/taiga.conf:/etc/nginx/conf.d/default.conf
       - taiga-static-data:/taiga/static
       - taiga-media-data:/taiga/media
     networks:
       - taiga
+      - proxy
     depends_on:
       - taiga-front
       - taiga-back
       - taiga-events
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+
+      - "traefik.http.routers.taiga-secure.entrypoints=https"
+      - "traefik.http.routers.taiga-secure.rule=Host(`taiga.home.gosset.uk`)"
+      - "traefik.http.routers.taiga-secure.tls=true"
+      - "traefik.http.routers.taiga-secure.middlewares=secHeaders@docker"
+      - "traefik.http.routers.taiga-secure.service=taiga"
+
+      - "traefik.http.middlewares.secHeaders.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.secHeaders.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.secHeaders.headers.frameDeny=true"
+      - "traefik.http.middlewares.secHeaders.headers.sslRedirect=true"
+      - "traefik.http.middlewares.secHeaders.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.secHeaders.headers.stsPreload=true"
+      - "traefik.http.middlewares.secHeaders.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.secHeaders.headers.customFrameOptionsValue=\"SAMEORIGIN\""
+
+      - "traefik.http.services.taiga.loadbalancer.server.port=80"
+
+
 
 volumes:
   taiga-static-data:
@@ -146,3 +167,5 @@ volumes:
 
 networks:
   taiga:
+  proxy:
+    external: true
